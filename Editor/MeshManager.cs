@@ -6,14 +6,25 @@ namespace SculptMode
 {
     public class MeshManager
     {
-        public Mesh SharedMesh { get; private set; }
-        public Mesh WorkingMesh { get; private set; }
-        public Mesh BackupMesh { get; private set; }
 
         public MeshFilter TargetFilter
         {
             get { return meshFilter; }
         }
+
+        public MeshCollider Collider
+        {
+            get { return meshCollider; }
+        }
+
+        public Mesh MeshInstance
+        {
+            get { return workingMesh; }
+        }
+
+        private Mesh sharedMesh;
+        private Mesh backupMesh;
+        private Mesh workingMesh;
 
         private MeshFilter meshFilter;
         private MeshCollider meshCollider;
@@ -25,7 +36,7 @@ namespace SculptMode
                 throw new System.ArgumentNullException(nameof(filter), "MeshFilter cannot be null.");
 
             meshFilter = filter;
-            SharedMesh = meshFilter.sharedMesh;
+            sharedMesh = meshFilter.sharedMesh;
 
             if (!meshFilter.TryGetComponent(out meshCollider))
             {
@@ -36,10 +47,10 @@ namespace SculptMode
 
         public void BackupAndClone()
         {
-            if (BackupMesh == null && SharedMesh != null && !SharedMesh.name.Contains("(Clone)"))
+            if (backupMesh == null && sharedMesh != null && !sharedMesh.name.Contains("(Clone)"))
             {
-                BackupMesh = Object.Instantiate(SharedMesh);
-                BackupMesh.name = SharedMesh.name;
+                backupMesh = Object.Instantiate(sharedMesh);
+                backupMesh.name = sharedMesh.name;
             }
 
             ResetToBackup();
@@ -47,43 +58,43 @@ namespace SculptMode
 
         public void ResetToBackup()
         {
-            if (BackupMesh == null) return;
+            if (backupMesh == null) return;
 
-            if (WorkingMesh != null)
-                Object.DestroyImmediate(WorkingMesh);
+            if (workingMesh != null)
+                Object.DestroyImmediate(workingMesh);
 
-            WorkingMesh = Object.Instantiate(BackupMesh);
-            WorkingMesh.name = BackupMesh.name + "(Clone)";
-            meshFilter.sharedMesh = WorkingMesh;
-            meshCollider.sharedMesh = WorkingMesh;
+            workingMesh = Object.Instantiate(backupMesh);
+            workingMesh.name = backupMesh.name + "(Clone)";
+            meshFilter.sharedMesh = workingMesh;
+            meshCollider.sharedMesh = workingMesh;
         }
 
         public void ModifyMesh()
         {
-            if (WorkingMesh == null) return;
+            if (workingMesh == null) return;
 
-            var vertices = WorkingMesh.vertices;
-            var normals = WorkingMesh.normals;
+            var vertices = workingMesh.vertices;
+            var normals = workingMesh.normals;
 
             if (vertices.Length > 2 && normals.Length > 2)
                 vertices[2] -= normals[2] * 0.01f;
 
-            WorkingMesh.vertices = vertices;
-            WorkingMesh.RecalculateNormals();
-            WorkingMesh.RecalculateBounds();
+            workingMesh.vertices = vertices;
+            workingMesh.RecalculateNormals();
+            workingMesh.RecalculateBounds();
         }
 
         public void Cleanup()
         {
-            if (WorkingMesh != null)
+            if (workingMesh != null)
             {
-                Object.DestroyImmediate(WorkingMesh);
-                meshFilter.sharedMesh = SharedMesh;
+                Object.DestroyImmediate(workingMesh);
+                meshFilter.sharedMesh = sharedMesh;
             }
 
-            if (BackupMesh != null)
+            if (backupMesh != null)
             {
-                Object.DestroyImmediate(BackupMesh);
+                Object.DestroyImmediate(backupMesh);
             }
 
             if (meshCollider != null)
@@ -91,7 +102,7 @@ namespace SculptMode
                 if (isColliderGenerated)
                     Object.DestroyImmediate(meshCollider);
                 else
-                    meshCollider.sharedMesh = SharedMesh;
+                    meshCollider.sharedMesh = sharedMesh;
             }
         }
     }

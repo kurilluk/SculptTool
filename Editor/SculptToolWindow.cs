@@ -1,6 +1,5 @@
 using UnityEngine;
 using UnityEditor;
-// using System.Collections.Generic;
 
 namespace SculptMode
 {
@@ -22,13 +21,12 @@ namespace SculptMode
         private void OnDisable()
         {
             SceneView.duringSceneGui -= OnSceneGUI;
-            // meshManager?.Cleanup();
             MeshManagerFactory.ClearAll();
         }
 
         private void OnDestroy()
         {
-            // meshManager?.Cleanup();
+            SceneView.duringSceneGui -= OnSceneGUI;
             MeshManagerFactory.ClearAll();
         }
 
@@ -41,8 +39,7 @@ namespace SculptMode
             if (selected != null && selected.TryGetComponent(out MeshFilter mf))
             {
                 meshManager = MeshManagerFactory.GetOrCreate(mf);
-                // if (meshManager == null || mf != meshManager.TargetFilter)
-                //     meshManager = new MeshManager(mf);
+                meshManager.BackupAndClone();
 
                 EditorGUILayout.HelpBox("Selected: " + selected.name, MessageType.Info);
             }
@@ -52,10 +49,10 @@ namespace SculptMode
                 return;
             }
 
-            if (GUILayout.Button("Backup and Clone SharedMesh"))
-            {
-                meshManager.BackupAndClone();
-            }
+            // if (GUILayout.Button("Backup and Clone SharedMesh"))
+            // {
+            //     meshManager.BackupAndClone();
+            // }
 
             if (GUILayout.Button("Modify Working Mesh"))
             {
@@ -70,6 +67,26 @@ namespace SculptMode
             }
         }
 
-        private void OnSceneGUI(SceneView sceneView) { }
+       private void OnSceneGUI(SceneView sceneView)
+        {
+            if (meshManager == null || meshManager.Collider == null)
+                return;
+
+            Event e = Event.current;
+
+            // Prevzatie vstupu
+            if (e.type == EventType.Layout)
+                HandleUtility.AddDefaultControl(GUIUtility.GetControlID(FocusType.Passive));
+
+            Ray mouseWorldRay = HandleUtility.GUIPointToWorldRay(e.mousePosition);
+
+            if (meshManager.Collider.Raycast(mouseWorldRay, out RaycastHit hit, Mathf.Infinity))
+            {
+                float scale = HandleUtility.GetHandleSize(hit.point) * 0.05f;
+                Handles.color = Color.green;
+                Handles.CubeHandleCap(0, hit.point, Quaternion.LookRotation(Vector3.up), scale, EventType.Repaint);
+            }
+        }
+
     }
 }
