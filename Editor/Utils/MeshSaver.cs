@@ -1,9 +1,9 @@
 using UnityEditor;
 using UnityEngine;
 
-namespace SculptMode
+namespace SculptTool.Editor.Utils
 {
-    public static class MeshSaver
+    public static class MeshSaver // TODO: keep it or include to MeshManager
     {
         public static void SaveMeshAsAsset(Mesh mesh, string assetPath)
         {
