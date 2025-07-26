@@ -9,8 +9,8 @@ namespace SculptTool.Editor.Brushes
     {
         public override string Name => "Axial Brush";
 
-        private float radius = 0.5f;
-        private float intensity = 0.1f;
+        private float radius = 3f;
+        private float intensity = 0.05f;
         private AnimationCurve falloffCurve = AnimationCurve.EaseInOut(0, 1, 1, 0);
         private Axis selectedAxis = Axis.Y;
 
@@ -27,7 +27,7 @@ namespace SculptTool.Editor.Brushes
         public override void GetGUI()
         {
             EditorGUILayout.LabelField("Axial Brush Settings", EditorStyles.boldLabel);
-            radius = EditorGUILayout.Slider("Radius", radius, 0.01f, 2f);
+            radius = EditorGUILayout.Slider("Radius", radius, 0.1f, 10f);
             intensity = EditorGUILayout.Slider("Intensity", intensity, -1f, 1f);
             selectedAxis = (Axis)EditorGUILayout.EnumPopup("Direction Axis", selectedAxis);
             falloffCurve = EditorGUILayout.CurveField("Falloff", falloffCurve);
@@ -108,7 +108,7 @@ namespace SculptTool.Editor.Brushes
                 // if intensity is negative change green to red
                 Color color = Color.green;
                 if (intensity < 0) color = Color.red;
-                
+
                 Handles.color = Color.Lerp(Color.black, color, weightValues[i]); //Color.cyan;
                 Handles.SphereHandleCap(0, worldVertex, Quaternion.identity, size, EventType.Repaint);
 
