@@ -160,7 +160,7 @@ namespace SculptTool.Editor.UI
 
             SelectedBrush?.HandleEvent(e, meshManager);
             
-            // Debug.Log($"[Frame: {Time.frameCount}] Event Type: {e.type} | Mouse Pos: {e.mousePosition}");
+            Debug.Log($"[Frame: {Time.frameCount}] Event Type: {e.type} | Mouse Pos: {e.mousePosition}");
 
         }
     }
