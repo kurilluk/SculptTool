@@ -17,6 +17,8 @@ namespace SculptTool.Editor.UI
         private GameObject previousSelection;
         private MeshManager meshManager;
 
+        private bool sculptModeActive = true;
+
         private List<IBrush> brushes = new();
         private int selectedBrushIndex = 0;
         private IBrush SelectedBrush => brushes[selectedBrushIndex];
@@ -35,10 +37,11 @@ namespace SculptTool.Editor.UI
             brushes = new List<IBrush>()
             {
                 new AxialBrush(),
+                new FlattenBrush(),
                 //new InflateBrush(),
                 // new AxisBrush(),
                 // new RadialBrush(),
-                // new StampBrush(),
+                new StampBrush(),
                 // new TestingBrush(),
                 // Add other brushes here
             };
@@ -48,6 +51,7 @@ namespace SculptTool.Editor.UI
         {
             SceneView.duringSceneGui -= OnSceneGUI;
             MeshManagerFactory.ClearAll();
+            Tools.hidden = false;
         }
 
         private void OnDestroy()
@@ -65,7 +69,11 @@ namespace SculptTool.Editor.UI
             EditorGUILayout.LabelField("Sculpt Mode", EditorStyles.boldLabel);
             EditorGUILayout.Space();
 
+            ToolPoweButton();
+
             HandleSelectionChange();
+
+            if(!sculptModeActive) return;
 
             if (meshManager == null)
             {
@@ -77,8 +85,22 @@ namespace SculptTool.Editor.UI
 
             DrawMeshButtons();
 
+            DrawUndoRedoButtons();
+
             DrawBrushSettings();
 
+        }
+
+        private void ToolPoweButton()
+        {
+            if (GUILayout.Button(sculptModeActive ? "Deactivate Sculpt Mode" : "Activate Sculpt Mode"))
+            {
+                sculptModeActive = !sculptModeActive;
+
+                Tools.hidden = sculptModeActive;
+                SceneView.RepaintAll();
+                // Repaint();
+            }
         }
 
         /// <summary>
@@ -122,6 +144,30 @@ namespace SculptTool.Editor.UI
             }
         }
 
+
+        private void DrawUndoRedoButtons()
+        {
+            GUILayout.BeginHorizontal(EditorStyles.helpBox);
+
+            GUI.enabled = meshManager != null;
+
+            if (GUILayout.Button("Undo"))
+            {
+                meshManager.Undo();
+                SceneView.RepaintAll();
+            }
+
+            if (GUILayout.Button("Redo"))
+            {
+                meshManager.Redo();
+                SceneView.RepaintAll();
+            }
+
+            GUI.enabled = true;
+
+            GUILayout.EndHorizontal();
+        }
+
         /// <summary>
         /// Draws the brush settings section of the GUI.
         /// Includes brush selection dropdown and brush-specific GUI rendering.
@@ -150,6 +196,8 @@ namespace SculptTool.Editor.UI
         {
             if (meshManager == null || meshManager.Collider == null)
                 return;
+
+            if (!sculptModeActive) return;
 
             Event e = Event.current;
 

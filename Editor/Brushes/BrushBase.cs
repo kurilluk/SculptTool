@@ -34,11 +34,66 @@ namespace SculptTool.Editor.Brushes
 
         protected List<Vector3> verticesBuffer;
         protected readonly List<int> hitIndices = new();
-        protected readonly List<float> weightValues = new();
+        protected readonly List<float> falloffValues = new();
+        protected readonly List<float> magnitudeValues = new();
+
+
+        // foreach (int i in hitIndices)
+        // {
+        //     float delta = GetAverageY() - verticesBuffer[i].y;
+        //     minDelta = Mathf.Min(minDelta, delta);
+        //     maxDelta = Mathf.Max(maxDelta, delta);
+        // }
 
         // GUI FIELD
-        private float radius = 3f;
-        private float intensity = 0.05f;
+        protected float radius = 3f;
+        protected float radiusMin = 0.1f;
+        protected float radiusMax = 10f;
+        protected float intensity = 0.05f;
+        protected BrushDirection brushDirection;
+
+        protected enum BrushDirection { Pull, Push }
+
+        // protected bool IsPullOverride
+        // {
+        //     get
+        //     {
+        //         bool isControlPressed = Event.current.control;
+        //         if (isControlPressed)
+        //         brushDirection = BrushDirection.Push;
+        //         else
+        //         brushDirection = BrushDirection.Pull;
+        //         return isControlPressed;
+        //     }
+        // }
+        // // => Event.current.control;
+
+        private bool wasCtrlPressed = false;
+        private BrushDirection? savedBrushDirection = null;
+
+        private void UpdateControlOverride(Event e)
+        {
+            bool isCtrlNow = e.control;
+
+            // Ctrl práve stlačený
+            if (isCtrlNow && !wasCtrlPressed)
+            {
+                savedBrushDirection = brushDirection; // uložíme pôvodný stav
+                brushDirection = (savedBrushDirection == BrushDirection.Push)? BrushDirection.Pull : BrushDirection.Push;
+                // brushDirection = BrushDirection.Push; // override
+            }
+
+            // Ctrl práve pustil
+            else if (!isCtrlNow && wasCtrlPressed)
+            {
+                if (savedBrushDirection.HasValue)
+                    brushDirection = savedBrushDirection.Value; // vrátime
+                savedBrushDirection = null;
+            }
+
+            wasCtrlPressed = isCtrlNow; // aktualizuj stav pre ďalší frame
+        }
+
 
         public virtual void OnEnable() { }
         public virtual void OnDisable() { }
@@ -51,14 +106,17 @@ namespace SculptTool.Editor.Brushes
         public virtual void GetGUI()
         {
             // EditorGUILayout.LabelField(Name + " Settings:", EditorStyles.boldLabel);
-            radius = EditorGUILayout.Slider("Radius", radius, 0.1f, 10f);
+            radius = EditorGUILayout.Slider("Radius", radius, radiusMin, radiusMax);
             intensity = EditorGUILayout.Slider("Intensity", intensity, 0.01f, 1f);
             // TODO PULL OR PUSH - bool or button ...
+            brushDirection = (BrushDirection)EditorGUILayout.EnumPopup("Direction", brushDirection);
         }
 
         public void HandleEvent(Event e, MeshManager mm)
         {
             this.meshManager = mm;
+
+            UpdateControlOverride(e);
 
             switch (e.type)
             {
@@ -66,33 +124,36 @@ namespace SculptTool.Editor.Brushes
                     // UpdateMouseHit(e);
                     UpdateBrush(e);
                     UpdateMesh();
-                    // HandleUtility.Repaint(); // TEST CI JE POTREBNE
                     break;
 
                 case EventType.Repaint:
-                    UpdateGUI();
                     DrawHandles();
-                    // ApplyDisplacement();
                     break;
 
                 case EventType.MouseDown:
                     if (e.button == 0) OnLeftMouseDown(e);
-                    // isMouseLeftClick = true;
                     break;
 
                 case EventType.MouseDrag:
                     if (e.button == 0) OnLeftMouseDrag(e);
-                    // isDragging = true;
-                    // HandleUtility.Repaint(); // alebo SceneView.RepaintAll() ak chceš mať istotu
                     break;
 
                 case EventType.MouseUp:
                     if (e.button == 0) OnLeftMouseUp(e);
-                    // isDragging = false;
-                    // isMouseLeftClick = false;
+                    break;
+
+                case EventType.ScrollWheel:
+                    if (e.control)
+                    {
+                        radius -= e.delta.y * 0.1f;
+                        radius = Mathf.Clamp(radius, radiusMin, radiusMax);
+                        e.Use();
+                    }
                     break;
             }
         }
+
+        protected virtual void OnLayoutUpdate(Event e) { }
 
         private void UpdateBrush(Event e)
         {
@@ -101,8 +162,19 @@ namespace SculptTool.Editor.Brushes
             if (hasValidHit)
             {
                 verticesBuffer = meshManager.GetVerticesBuffer();
-                CalculateHitZone(lastHit, verticesBuffer,this.radius);
-                // BrushLogic(lastHit, meshManager);
+                CalculateHitZone(lastHit, verticesBuffer, radius);
+                OnLayoutUpdate(e);
+                CalculateMangiture();
+            }
+        }
+
+        private void CalculateMangiture()
+        {
+            magnitudeValues.Clear();
+
+            for (int i = 0; i < hitIndices.Count; i++)
+            {
+                magnitudeValues.Add(DisplacementMagnitude(i));
             }
         }
 
@@ -131,7 +203,7 @@ namespace SculptTool.Editor.Brushes
             Vector3 localHitPoint = hit.collider.transform.InverseTransformPoint(hit.point);
 
             hitIndices.Clear();
-            weightValues.Clear();
+            falloffValues.Clear();
 
             // NOTE: I suggest that: Capacity should not change between different runs
             //hitIndices.Capacity = Mathf.Max(hitIndices.Capacity, meshVertices.Count / 4);
@@ -146,7 +218,7 @@ namespace SculptTool.Editor.Brushes
                     hitIndices.Add(i);
                     float t = Mathf.Clamp01(sqrDistance / sqrRadius);
                     float falloff = FalloffLogic(t);
-                    weightValues.Add(falloff);
+                    falloffValues.Add(falloff);
                 }
             }
         }
@@ -161,9 +233,6 @@ namespace SculptTool.Editor.Brushes
             return normalizedDistance;
         }
 
-        public void UpdateGUI()
-        { } //DO WE NEED IT?!
-
         protected virtual void DrawHandles()
         { 
             if (!hasValidHit) return;
@@ -176,13 +245,14 @@ namespace SculptTool.Editor.Brushes
             for (int i = 0; i < hitIndices.Count; i++)
             {
                 // Hit vertices and weight
-                float size = Mathf.Lerp(0.05f, 0.2f, weightValues[i]);
+                float size = Mathf.Lerp(0.1f, 0.2f, Mathf.Abs(magnitudeValues[i]));
                 Vector3 worldVertex = lastHit.transform.TransformPoint(meshVertices[hitIndices[i]]);
                 // if intensity is negative change green to red
-                Color color = Color.green;
-                if (intensity < 0) color = Color.red;
+                Color color = (brushDirection == BrushDirection.Push || magnitudeValues[i] < 0f) ? Color.red : Color.green;
+                // Color color = Color.green;
+                // if (intensity < 0) color = Color.red;
 
-                Handles.color = Color.Lerp(Color.black, color, weightValues[i]); //Color.cyan;
+                Handles.color = Color.Lerp(Color.black, color, falloffValues[i]); //Color.cyan;
                 Handles.SphereHandleCap(0, worldVertex, Quaternion.identity, size, EventType.Repaint);
 
                 // Brush radius circle
@@ -204,9 +274,14 @@ namespace SculptTool.Editor.Brushes
             return Vector3.up; //lastHit.transform.up; //.normalized;
         }
 
+        /// <summary>
+        /// Ideal - normalized value
+        /// </summary>
+        /// <param name="index"></param>
+        /// <returns></returns>
         protected virtual float DisplacementMagnitude(int index)
         {
-            return weightValues[index] * intensity;
+            return falloffValues[index];
         }
 
         protected void UpdateMesh()
@@ -219,8 +294,8 @@ namespace SculptTool.Editor.Brushes
 
                 for (int i = 0; i < hitIndices.Count; i++)
                 {
-                    Vector3 displacement = DisplacementDirection(i) * DisplacementMagnitude(i);
-                    verticesBuffer[hitIndices[i]] += displacement;
+                    Vector3 displacement = DisplacementDirection(i) * magnitudeValues[i] * intensity;
+                    verticesBuffer[hitIndices[i]] += displacement * ((brushDirection == BrushDirection.Push) ? -1f : 1f);
                 }
 
                 meshManager.ApplyVerticesBuffer();

@@ -131,7 +131,7 @@ namespace SculptTool.Editor.Utils
         private static Mesh CloneMesh(Mesh source)
         {
             var clone = Object.Instantiate(source);
-            clone.name = source.name + "_Copy";
+            clone.name = source.name + "(Clone)";
             return clone;
         }
 
