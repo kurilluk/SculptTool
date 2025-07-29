@@ -7,7 +7,7 @@ This directory contains a set of modular sculpting brushes for Unity's Editor, b
 All brushes inherit from:
 
 ```csharp
-abstract class BrushBase : ScriptableObject
+abstract class BrushBase : IBrush
 ````
 
 Each brush implements:
@@ -99,7 +99,7 @@ public class StampBrush : BrushBase
 
 ---
 
-## Directory Structure
+<!-- ## Directory Structure
 
 ```
 Brushes/
@@ -107,7 +107,7 @@ Brushes/
 ├── FlattenBrush.cs
 ├── StampBrush.cs
 └── BrushBase.cs
-```
+``` -->
 
 ---
 
