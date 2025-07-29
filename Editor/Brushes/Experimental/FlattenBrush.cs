@@ -5,17 +5,37 @@ using SculptTool.Editor.Utils;
 
 namespace SculptTool.Editor.Brushes
 {
+    /// <summary>
+    /// A brush that flattens terrain or geometry by pulling vertices toward an average height level.
+    /// The amount of displacement is based on each vertex’s vertical distance from the average,
+    /// modulated by a falloff curve and normalized delta strength.
+    /// </summary>
     public class FlattenBrush : BrushBase
     {
+        /// <summary>
+        /// Display name of the brush shown in the UI.
+        /// </summary>
         public override string Name => "Flatten Brush";
 
+        /// <summary>
+        /// Curve defining the falloff from the center of the brush to the edges.
+        /// </summary>
         private AnimationCurve falloffCurve = AnimationCurve.Linear(0, 1, 1, 0);
 
-        private List<float> deltaValues = new ();
+        /// <summary>
+        /// Precomputed delta distances for affected vertices, normalized after computing.
+        /// </summary>
+        private List<float> deltaValues = new();
 
+        /// <summary>
+        /// Minimum delta value under which vertex displacement is ignored.
+        /// Used to avoid micro-adjustments that are visually irrelevant.
+        /// </summary>
         private float deltaThreshold = 0.01f;
 
-
+        /// <summary>
+        /// Renders GUI controls for falloff curve and precision threshold.
+        /// </summary>
         public override void GetGUI()
         {
             base.GetGUI();
@@ -23,33 +43,34 @@ namespace SculptTool.Editor.Brushes
             deltaThreshold = EditorGUILayout.FloatField("Precision Threshold", deltaThreshold);
         }
 
+        /// <summary>
+        /// Evaluates the falloff influence using the current falloff curve.
+        /// </summary>
         protected override float FalloffLogic(float normalizedDistance)
         {
             return falloffCurve.Evaluate(normalizedDistance);
         }
 
-        protected override float DisplacementMagnitude(int index)
+        /// <summary>
+        /// Calculates how much a vertex should be displaced based on its distance
+        /// from the average height and the falloff value.
+        /// </summary>
+        protected override float CalculateMagnitude(int hitZoneIndex)
         {
             if (verticesBuffer == null || hitIndices == null || deltaValues?.Count == 0)
                 return 0f;
 
-        //    // float falloff = falloffCurve.Evaluate(normalizedDistance);
-
-        //     // Výška aktuálneho vertexu
-        //     float currentY = verticesBuffer[hitIndices[index]].y;
-
-        //     // Priemerná výška vypočítaná raz pre celý buffer
-        //     float averageY = GetAverageHeight();
-
-        //     // Rozdiel medzi aktuálnou a cieľovou výškou
-        //     float delta = averageY - currentY;
-
-        //     // Falloff + intensity aplikované
-            return deltaValues[index] * falloffValues[index];
+            return deltaValues[hitZoneIndex] * falloffValues[hitZoneIndex];
         }
 
+        /// <summary>
+        /// Cached average Y height of all affected vertices. Reset every frame.
+        /// </summary>
         private float? cachedAverageY = null;
 
+        /// <summary>
+        /// Calculates and caches the average Y value (height) of affected vertices.
+        /// </summary>
         private float GetAverageHeight()
         {
             if (cachedAverageY.HasValue)
@@ -65,6 +86,10 @@ namespace SculptTool.Editor.Brushes
             return avg;
         }
 
+        /// <summary>
+        /// Computes and normalizes the height difference of each affected vertex relative to the average height.
+        /// Applies the delta threshold to avoid insignificant displacements.
+        /// </summary>
         private void NormalizeDeltaDistance()
         {
             deltaValues.Clear();
@@ -89,28 +114,21 @@ namespace SculptTool.Editor.Brushes
             }
         }
 
+        /// <summary>
+        /// Clears cached values. Called at the beginning of each frame.
+        /// </summary>
         private void Reset()
         {
             cachedAverageY = null;
         }
 
-        // Reset cached value na nový frame
-        // public override void OnEnable()
-        // {
-        //     base.OnEnable();
-        //     ResetAverageHeight();
-        // }
-
+        /// <summary>
+        /// Called during layout update to recalculate vertex deltas before sculpting begins.
+        /// </summary>
         protected override void OnLayoutUpdate(Event e)
         {
             if (!hasValidHit) return;
             NormalizeDeltaDistance();
         }
-
-        // protected override void OnLeftMouseDrag(Event e)
-        // {
-        //     base.OnLeftMouseDrag(e);
-        //     ResetAverageHeight();
-        // }
     }
 }

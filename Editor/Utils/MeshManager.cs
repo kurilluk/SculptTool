@@ -131,59 +131,8 @@ namespace SculptTool.Editor.Utils
         private static Mesh CloneMesh(Mesh source)
         {
             var clone = Object.Instantiate(source);
-            clone.name = source.name + "(Clone)";
+            clone.name = source.name;
             return clone;
-        }
-
-        #endregion
-
-        #region === Undo/Redo ===
-
-        /// <summary>
-        /// Pushes the current mesh state into the undo buffer.
-        /// </summary>
-        public void PushUndo()
-        {
-            if (!enableUndo || editingMesh == null)
-                return;
-
-            undoBuffer.PushUndo(CloneMesh(editingMesh));
-        }
-
-        /// <summary>
-        /// Undoes the last mesh change, if available.
-        /// </summary>
-        public void Undo()
-        {
-            if (!enableUndo) return;
-
-            var undoMesh = undoBuffer.PopUndo();
-            if (undoMesh == null) return;
-
-            PushRedo(); // Save current before replacing
-            ReplaceEditingMesh(undoMesh);
-        }
-
-        /// <summary>
-        /// Redoes the last undone mesh change, if available.
-        /// </summary>
-        public void Redo()
-        {
-            if (!enableUndo) return;
-
-            var redoMesh = undoBuffer.PopRedo();
-            if (redoMesh == null) return;
-
-            PushUndo(); // Save current before replacing
-            ReplaceEditingMesh(redoMesh);
-        }
-
-        private void PushRedo()
-        {
-            if (!enableUndo || editingMesh == null)
-                return;
-
-            undoBuffer.PushRedo(CloneMesh(editingMesh));
         }
 
         #endregion
@@ -222,6 +171,7 @@ namespace SculptTool.Editor.Utils
                 return;
 
             PushUndo();
+            // Debug.Log("PushUndo: " + undoBuffer.undoStack.Count);
 
             editingMesh.SetVertices(verticesBuffer);
             RefreshMesh();
@@ -282,55 +232,180 @@ namespace SculptTool.Editor.Utils
 
         #endregion
 
+        #region === Undo/Redo ===
+
+        /// <summary>
+        /// Pushes the current mesh state into the undo buffer.
+        /// </summary>
+        public void PushUndo()
+        {
+            if (!enableUndo || editingMesh == null)
+                return;
+
+            undoBuffer.PushUndo(CloneMesh(editingMesh));
+        }
+
+        /// <summary>
+        /// Undoes the last mesh change, if available.
+        /// </summary>
+        public void Undo()
+        {
+            if (!enableUndo) return;
+
+            var undoMesh = undoBuffer.PopUndo();
+            if (undoMesh == null) return;
+
+            PushRedo(); // Save current before replacing
+            ReplaceEditingMesh(undoMesh);
+        }
+
+        /// <summary>
+        /// Redoes the last undone mesh change, if available.
+        /// </summary>
+        public void Redo()
+        {
+            if (!enableUndo) return;
+
+            var redoMesh = undoBuffer.PopRedo();
+            if (redoMesh == null) return;
+
+            undoBuffer.PushUndo(CloneMesh(editingMesh), clearRedo: false);
+            ReplaceEditingMesh(redoMesh);
+        }
+
+        private void PushRedo()
+        {
+            if (!enableUndo || editingMesh == null)
+                return;
+
+            undoBuffer.PushRedo(CloneMesh(editingMesh));
+        }
+
+        #endregion
+
         #region === Internal Undo Buffer ===
 
         /// <summary>
-        /// Internal helper for managing mesh history.
+        /// Efficient and safe undo/redo buffer for mesh history,
+        /// using LinkedList to support fast FIFO limit management.
         /// </summary>
         private class MeshUndoBuffer
         {
-            private readonly Stack<Mesh> undoStack = new();
-            private readonly Stack<Mesh> redoStack = new();
-            private const int MaxHistory = 10;
+            private readonly LinkedList<Mesh> undoHistory = new();
+            private readonly LinkedList<Mesh> redoHistory = new();
 
-            public void PushUndo(Mesh mesh)
+            private readonly int maxHistory;
+
+            /// <summary>
+            /// Initializes the buffer with a maximum history size.
+            /// </summary>
+            /// <param name="maxHistory">Maximum total number of mesh versions to keep in undo/redo.</param>
+            public MeshUndoBuffer(int maxHistory = 100)
+            {
+                this.maxHistory = System.Math.Max(1, maxHistory); // ensure at least one entry allowed
+            }
+
+            /// <summary>
+            /// Pushes a mesh into the undo history.
+            /// Optionally clears the redo history (which should be done on new user action).
+            /// </summary>
+            public void PushUndo(Mesh mesh, bool clearRedo = true)
             {
                 if (mesh == null) return;
 
-                if (undoStack.Count >= MaxHistory)
-                    Object.DestroyImmediate(undoStack.Pop());
+                // Add new mesh to undo history
+                undoHistory.AddLast(mesh);
 
-                undoStack.Push(mesh);
-                ClearRedo();
+                // Enforce max size across both histories
+                EnforceLimit();
+
+                // Clear redo stack on forward action
+                if (clearRedo)
+                    ClearRedo();
             }
 
+            /// <summary>
+            /// Pushes a mesh into the redo history.
+            /// </summary>
             public void PushRedo(Mesh mesh)
             {
                 if (mesh == null) return;
 
-                if (redoStack.Count >= MaxHistory)
-                    Object.DestroyImmediate(redoStack.Pop());
-
-                redoStack.Push(mesh);
+                redoHistory.AddLast(mesh);
+                EnforceLimit();
             }
 
-            public Mesh PopUndo() => undoStack.Count > 0 ? undoStack.Pop() : null;
-            public Mesh PopRedo() => redoStack.Count > 0 ? redoStack.Pop() : null;
+            /// <summary>
+            /// Pops the most recent undo mesh.
+            /// </summary>
+            public Mesh PopUndo()
+            {
+                if (undoHistory.Count == 0) return null;
 
+                var last = undoHistory.Last.Value;
+                undoHistory.RemoveLast();
+                return last;
+            }
+
+            /// <summary>
+            /// Pops the most recent redo mesh.
+            /// </summary>
+            public Mesh PopRedo()
+            {
+                if (redoHistory.Count == 0) return null;
+
+                var last = redoHistory.Last.Value;
+                redoHistory.RemoveLast();
+                return last;
+            }
+
+            /// <summary>
+            /// Clears the redo history and destroys associated meshes.
+            /// </summary>
             public void ClearRedo()
             {
-                while (redoStack.Count > 0)
-                    Object.DestroyImmediate(redoStack.Pop());
+                foreach (var mesh in redoHistory)
+                    Object.DestroyImmediate(mesh);
+
+                redoHistory.Clear();
             }
 
+            /// <summary>
+            /// Clears both undo and redo histories and destroys all associated meshes.
+            /// </summary>
             public void Clear()
             {
-                while (undoStack.Count > 0)
-                    Object.DestroyImmediate(undoStack.Pop());
+                foreach (var mesh in undoHistory)
+                    Object.DestroyImmediate(mesh);
+                undoHistory.Clear();
 
                 ClearRedo();
             }
+
+            /// <summary>
+            /// Removes oldest meshes from undo/redo histories if total exceeds limit.
+            /// Prioritizes removing from undo history first.
+            /// </summary>
+            private void EnforceLimit()
+            {
+                while (undoHistory.Count + redoHistory.Count > maxHistory)
+                {
+                    if (undoHistory.Count > 0)
+                    {
+                        var oldest = undoHistory.First.Value;
+                        Object.DestroyImmediate(oldest);
+                        undoHistory.RemoveFirst();
+                    }
+                    else if (redoHistory.Count > 0)
+                    {
+                        var oldest = redoHistory.First.Value;
+                        Object.DestroyImmediate(oldest);
+                        redoHistory.RemoveFirst();
+                    }
+                }
+            }
         }
+
 
         #endregion
     }

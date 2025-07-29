@@ -8,7 +8,8 @@ using SculptTool.Editor.Utils;
 namespace SculptTool.Editor.UI
 {
     /// <summary>
-    /// Window and UI, GameObject - mesh selection, Brush selection and UI
+    /// Main editor window for Sculpt Mode tool.
+    /// Handles UI, brush selection, GameObject targeting, mesh management and scene interaction.
     /// </summary>
     public class ToolController : EditorWindow
     {
@@ -17,12 +18,19 @@ namespace SculptTool.Editor.UI
         private GameObject previousSelection;
         private MeshManager meshManager;
 
-        private bool sculptModeActive = true;
+        private bool sculptModeActive = false;
 
         private List<IBrush> brushes = new();
         private int selectedBrushIndex = 0;
+
+        /// <summary>
+        /// Currently selected brush based on the dropdown index.
+        /// </summary>
         private IBrush SelectedBrush => brushes[selectedBrushIndex];
 
+        /// <summary>
+        /// Opens the Sculpt Mode editor window from the Unity menu.
+        /// </summary>
         [MenuItem("Tools/Sculpt Mode")]
         public static void ShowWindow()
         {
@@ -32,21 +40,24 @@ namespace SculptTool.Editor.UI
             window.autoRepaintOnSceneChange = true;
         }
 
+        /// <summary>
+        /// Called when the window is enabled.
+        /// Initializes the list of available brushes.
+        /// </summary>
         private void OnEnable()
         {
             brushes = new List<IBrush>()
             {
                 new AxialBrush(),
                 new FlattenBrush(),
-                //new InflateBrush(),
-                // new AxisBrush(),
-                // new RadialBrush(),
                 new StampBrush(),
-                // new TestingBrush(),
                 // Add other brushes here
             };
         }
 
+        /// <summary>
+        /// Cleans up resources when the window is disabled.
+        /// </summary>
         private void OnDisable()
         {
             SceneView.duringSceneGui -= OnSceneGUI;
@@ -61,19 +72,15 @@ namespace SculptTool.Editor.UI
         }
 
         /// <summary>
-        /// Draws the user interface for the Sculpt Mode tool.
-        /// Includes object selection handling, mesh reset, brush settings, and mesh saving.
+        /// Main GUI rendering method.
+        /// Displays the sculpt controls and brush-specific settings.
         /// </summary>
         private void OnGUI()
         {
             EditorGUILayout.LabelField("Sculpt Mode", EditorStyles.boldLabel);
             EditorGUILayout.Space();
 
-            ToolPoweButton();
-
             HandleSelectionChange();
-
-            if(!sculptModeActive) return;
 
             if (meshManager == null)
             {
@@ -83,30 +90,38 @@ namespace SculptTool.Editor.UI
 
             EditorGUILayout.HelpBox("Selected: " + Selection.activeGameObject.name, MessageType.Info);
 
+            ToolPoweButton();
+
+            if (!sculptModeActive)
+                return;
+
             DrawMeshButtons();
-
             DrawUndoRedoButtons();
-
             DrawBrushSettings();
-
         }
 
+        /// <summary>
+        /// Renders the activate/deactivate sculpt mode toggle button.
+        /// </summary>
         private void ToolPoweButton()
         {
+            Color originalColor = GUI.backgroundColor;
+            GUI.backgroundColor = sculptModeActive ? new Color(0.7f, 0.2f, 0.2f) : new Color(0.2f, 0.7f, 0.2f);
+
             if (GUILayout.Button(sculptModeActive ? "Deactivate Sculpt Mode" : "Activate Sculpt Mode"))
             {
                 sculptModeActive = !sculptModeActive;
 
                 Tools.hidden = sculptModeActive;
                 SceneView.RepaintAll();
-                // Repaint();
             }
+
+            GUI.backgroundColor = originalColor;
         }
 
         /// <summary>
-        /// Handles changes in the currently selected GameObject.
-        /// Initializes or clears the mesh manager depending on whether
-        /// the selected object has a MeshFilter component.
+        /// Monitors selection changes in the Unity Editor.
+        /// Updates the mesh manager when a new mesh object is selected.
         /// </summary>
         private void HandleSelectionChange()
         {
@@ -128,7 +143,7 @@ namespace SculptTool.Editor.UI
         }
 
         /// <summary>
-        /// Draws mesh manipulation buttons like Reset and Save.
+        /// Renders mesh control buttons for resetting or saving the current mesh.
         /// </summary>
         private void DrawMeshButtons()
         {
@@ -138,13 +153,19 @@ namespace SculptTool.Editor.UI
                 SceneView.RepaintAll();
             }
 
-            if (GUILayout.Button("(payed version only) Save Mesh to Asset"))
+            if (GUILayout.Button("Save Mesh to Asset (Premium only)"))
             {
+                EditorUtility.DisplayDialog("Premium Feature",
+                    "Saving meshes is only available in the premium version.\n\nClick OK to HIRE ME and unlock the feature!\n\nThank you for your consideration. :)",
+                    "OK");
+
                 MeshSaver.SaveMeshAsAsset(meshManager.MeshInstance, "Assets/SavedMeshes/ModifiedMesh.asset");
             }
         }
 
-
+        /// <summary>
+        /// Renders Undo and Redo buttons to allow sculpting history navigation.
+        /// </summary>
         private void DrawUndoRedoButtons()
         {
             GUILayout.BeginHorizontal(EditorStyles.helpBox);
@@ -169,8 +190,7 @@ namespace SculptTool.Editor.UI
         }
 
         /// <summary>
-        /// Draws the brush settings section of the GUI.
-        /// Includes brush selection dropdown and brush-specific GUI rendering.
+        /// Renders brush selection dropdown and delegates brush-specific GUI to the active brush.
         /// </summary>
         private void DrawBrushSettings()
         {
@@ -179,37 +199,37 @@ namespace SculptTool.Editor.UI
             EditorGUILayout.Space();
 
             string[] names = brushes.Select(b => b.Name).ToArray();
-            // string[] names = new string[brushes.Count];
-            // for (int i = 0; i < brushes.Count; i++)
-            // {
-            //     names[i] = brushes[i].Name;
-            // }
             selectedBrushIndex = EditorGUILayout.Popup("Select Brush", selectedBrushIndex, names);
 
             SelectedBrush.GetGUI();
+
             EditorGUILayout.Space();
         }
 
-
-        // private SceneContext context;
+        /// <summary>
+        /// Handles events in the Scene view, passing them to the currently active brush.
+        /// Also ensures brush previews or interactions are drawn in-scene.
+        /// </summary>
         private void OnSceneGUI(SceneView sceneView)
         {
             if (meshManager == null || meshManager.Collider == null)
                 return;
 
-            if (!sculptModeActive) return;
+            if (!sculptModeActive)
+                return;
 
             Event e = Event.current;
 
+            // Capture scene input
             if (e.type == EventType.Layout)
             {
                 HandleUtility.AddDefaultControl(GUIUtility.GetControlID(FocusType.Passive));
             }
 
             SelectedBrush?.HandleEvent(e, meshManager);
-            
-            Debug.Log($"[Frame: {Time.frameCount}] Event Type: {e.type} | Mouse Pos: {e.mousePosition}");
 
+            // Debug logging
+            // Debug.Log($"[Frame: {Time.frameCount}] Event Type: {e.type} | Mouse Pos: {e.mousePosition}");
         }
     }
 }

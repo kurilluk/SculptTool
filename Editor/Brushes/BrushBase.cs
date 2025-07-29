@@ -6,128 +6,104 @@ using SculptTool.Editor.Utils;
 namespace SculptTool.Editor.Brushes
 {
     /// <summary>
-    /// Base abstract class for sculpting brushes.
-    /// Requires derived classes to provide a name.
-    /// Provides a virtual GUI method and hides event handling from public API.
+    /// Abstract base class for sculpting brushes in Unity's editor.
+    /// Defines shared logic for handling input events, GUI, vertex displacement,
+    /// and brush falloff behavior.
     /// </summary>
     public abstract class BrushBase : IBrush
     {
         /// <summary>
-        /// Gets the display name of the brush.
-        /// Must be implemented by derived classes.
+        /// Gets the display name of the brush. Must be implemented by derived classes.
         /// </summary>
         public abstract string Name { get; }
 
+        /// <summary>
+        /// Reference to the mesh manager for manipulating vertex data.
+        /// </summary>
         protected MeshManager meshManager;
 
-        // Aktuálny Raycast hit - aktualizovaný v každom Layout evente
-        // protected RaycastHit? lastHit;
+        /// <summary>
+        /// Stores the result of the latest raycast hit during brush interaction.
+        /// </summary>
         protected bool hasValidHit = false;
         protected RaycastHit lastHit;
 
-        protected bool isMouseLeftClick = false; 
-        protected bool isMouseLeftDrag = false;
+        /// <summary>
+        /// Mouse input flags for tracking user actions.
+        /// </summary>
+        private bool isMouseLeftClick = false;
+        private bool isMouseLeftDrag = false;
 
-        // Výsledky výpočtov - napriklad vzdialenosti k vrcholom
-        // protected Vector3[] affectedVertices;
-        // protected Vector3[] displacementVectors;  // NIE JE LEPSIE AKO LIST a ADD ak je potrebne?
-
+        /// <summary>
+        /// Buffers used for calculating affected vertices and brush effects.
+        /// </summary>
         protected List<Vector3> verticesBuffer;
         protected readonly List<int> hitIndices = new();
         protected readonly List<float> falloffValues = new();
         protected readonly List<float> magnitudeValues = new();
+        protected Vector3 GetAffectedVertex(int hitZoneIndex) => verticesBuffer[hitIndices[hitZoneIndex]];
 
 
-        // foreach (int i in hitIndices)
-        // {
-        //     float delta = GetAverageY() - verticesBuffer[i].y;
-        //     minDelta = Mathf.Min(minDelta, delta);
-        //     maxDelta = Mathf.Max(maxDelta, delta);
-        // }
-
-        // GUI FIELD
+        /// <summary>
+        /// Brush shape settings (modifiable in GUI).
+        /// </summary>
         protected float radius = 3f;
-        protected float radiusMin = 0.1f;
-        protected float radiusMax = 10f;
+        private const float RadiusMin = 0.1f;
+        private const float RadiusMax = 10f;
         protected float intensity = 0.05f;
+
+        /// <summary>
+        /// Defines the brush application direction.
+        /// </summary>
+        protected enum BrushDirection { Pull, Push }
         protected BrushDirection brushDirection;
 
-        protected enum BrushDirection { Pull, Push }
-
-        // protected bool IsPullOverride
-        // {
-        //     get
-        //     {
-        //         bool isControlPressed = Event.current.control;
-        //         if (isControlPressed)
-        //         brushDirection = BrushDirection.Push;
-        //         else
-        //         brushDirection = BrushDirection.Pull;
-        //         return isControlPressed;
-        //     }
-        // }
-        // // => Event.current.control;
-
+        /// <summary>
+        /// Internal state to manage Ctrl override for brush direction toggle.
+        /// </summary>
         private bool wasCtrlPressed = false;
         private BrushDirection? savedBrushDirection = null;
 
-        private void UpdateControlOverride(Event e)
-        {
-            bool isCtrlNow = e.control;
-
-            // Ctrl práve stlačený
-            if (isCtrlNow && !wasCtrlPressed)
-            {
-                savedBrushDirection = brushDirection; // uložíme pôvodný stav
-                brushDirection = (savedBrushDirection == BrushDirection.Push)? BrushDirection.Pull : BrushDirection.Push;
-                // brushDirection = BrushDirection.Push; // override
-            }
-
-            // Ctrl práve pustil
-            else if (!isCtrlNow && wasCtrlPressed)
-            {
-                if (savedBrushDirection.HasValue)
-                    brushDirection = savedBrushDirection.Value; // vrátime
-                savedBrushDirection = null;
-            }
-
-            wasCtrlPressed = isCtrlNow; // aktualizuj stav pre ďalší frame
-        }
-
-
+        /// <summary>
+        /// Called when the brush is enabled. Can be overridden for setup.
+        /// </summary>
         public virtual void OnEnable() { }
+
+        /// <summary>
+        /// Called when the brush is disabled. Can be overridden for cleanup.
+        /// </summary>
         public virtual void OnDisable() { }
 
         /// <summary>
-        /// Draws custom GUI controls for the brush inside the editor window.
-        /// Can be overridden by derived classes.
-        /// Default implementation does nothing.
+        /// Draws GUI controls for brush settings inside the Unity Editor window.
+        /// Can be overridden to add custom parameters.
         /// </summary>
         public virtual void GetGUI()
         {
-            // EditorGUILayout.LabelField(Name + " Settings:", EditorStyles.boldLabel);
-            radius = EditorGUILayout.Slider("Radius", radius, radiusMin, radiusMax);
+            radius = EditorGUILayout.Slider("Radius", radius, RadiusMin, RadiusMax);
             intensity = EditorGUILayout.Slider("Intensity", intensity, 0.01f, 1f);
-            // TODO PULL OR PUSH - bool or button ...
             brushDirection = (BrushDirection)EditorGUILayout.EnumPopup("Direction", brushDirection);
         }
 
+        /// <summary>
+        /// Handles Unity editor events relevant to brush input and behavior.
+        /// </summary>
+        /// <param name="e">Current event</param>
+        /// <param name="mm">MeshManager reference</param>
         public void HandleEvent(Event e, MeshManager mm)
         {
             this.meshManager = mm;
-
             UpdateControlOverride(e);
 
             switch (e.type)
             {
                 case EventType.Layout:
-                    // UpdateMouseHit(e);
                     UpdateBrush(e);
-                    UpdateMesh();
+                    ApplyMeshChanges();
                     break;
 
                 case EventType.Repaint:
-                    DrawHandles();
+                    DrawBrushHandles();
                     break;
 
                 case EventType.MouseDown:
@@ -143,71 +119,99 @@ namespace SculptTool.Editor.Brushes
                     break;
 
                 case EventType.ScrollWheel:
-                    if (e.control)
-                    {
-                        radius -= e.delta.y * 0.1f;
-                        radius = Mathf.Clamp(radius, radiusMin, radiusMax);
-                        e.Use();
-                    }
+                    HandleScrollWheel(e);
                     break;
             }
         }
 
-        protected virtual void OnLayoutUpdate(Event e) { }
+        /// <summary>
+        /// Toggles brush direction while Ctrl is held and restores it on release.
+        /// </summary>
+        private void UpdateControlOverride(Event e)
+        {
+            bool isCtrlNow = e.control;
 
+            if (isCtrlNow && !wasCtrlPressed)
+            {
+                savedBrushDirection = brushDirection;
+                brushDirection = (savedBrushDirection == BrushDirection.Push) ? BrushDirection.Pull : BrushDirection.Push;
+            }
+            else if (!isCtrlNow && wasCtrlPressed && savedBrushDirection.HasValue)
+            {
+                brushDirection = savedBrushDirection.Value;
+                savedBrushDirection = null;
+            }
+
+            wasCtrlPressed = isCtrlNow;
+        }
+
+        /// <summary>
+        /// Adjusts the brush radius using the mouse scroll wheel while Ctrl is held.
+        /// </summary>
+        private void HandleScrollWheel(Event e)
+        {
+            if (e.control)
+            {
+                radius -= e.delta.y * 0.1f;
+                radius = Mathf.Clamp(radius, RadiusMin, RadiusMax);
+                e.Use();
+            }
+        }
+
+        /// <summary>
+        /// Updates internal brush state during the layout phase.
+        /// Computes hit location and affected vertices.
+        /// </summary>
         private void UpdateBrush(Event e)
         {
             hasValidHit = TryGetMouseHit(e, out lastHit);
 
-            if (hasValidHit)
-            {
-                verticesBuffer = meshManager.GetVerticesBuffer();
-                CalculateHitZone(lastHit, verticesBuffer, radius);
-                OnLayoutUpdate(e);
-                CalculateMangiture();
-            }
+            if (!hasValidHit) return;
+
+            verticesBuffer = meshManager.GetVerticesBuffer();
+            ComputeHitZone(lastHit, verticesBuffer, radius);
+            OnLayoutUpdate(e);
+            ComputeMagnitudes();
         }
 
-        private void CalculateMangiture()
+        /// <summary>
+        /// Optional hook for custom brush logic during layout update.
+        /// </summary>
+        protected virtual void OnLayoutUpdate(Event e) { }
+
+        /// <summary>
+        /// Recalculates magnitude values for affected vertices.
+        /// </summary>
+        private void ComputeMagnitudes()
         {
             magnitudeValues.Clear();
-
             for (int i = 0; i < hitIndices.Count; i++)
-            {
-                magnitudeValues.Add(DisplacementMagnitude(i));
-            }
+                magnitudeValues.Add(CalculateMagnitude(i));
         }
 
+        /// <summary>
+        /// Performs a raycast into the scene from the current mouse position.
+        /// </summary>
         private bool TryGetMouseHit(Event e, out RaycastHit hit)
         {
-            hit = default; // Ensure 'hit' is always assigned
+            hit = default;
 
-            if (meshManager != null && meshManager.Collider != null)
-            {
-                Ray ray = HandleUtility.GUIPointToWorldRay(e.mousePosition);
-                return meshManager.Collider.Raycast(ray, out hit, Mathf.Infinity);
-            }
-            return false;
+            if (meshManager?.Collider == null)
+                return false;
+
+            Ray ray = HandleUtility.GUIPointToWorldRay(e.mousePosition);
+            return meshManager.Collider.Raycast(ray, out hit, Mathf.Infinity);
         }
 
-        // protected virtual void BrushLogic(RaycastHit hit, MeshManager mm)
-        // {
-        //     // // Výpočet zasiahnutých bodov a displacementov podľa brush logiky
-        //     // Vector3 hitPoint = lastHit.Value.point;
-        //     // affectedVertices = meshManager.GetVerticesWithinRadius(hitPoint, GetRadius());
-        //     // displacementVectors = ComputeDisplacement(affectedVertices, hitPoint);
-        // }
-
-        private void CalculateHitZone(RaycastHit hit, List<Vector3> meshVertices, float radius)
+        /// <summary>
+        /// Computes which vertices fall within the brush radius and applies falloff.
+        /// </summary>
+        private void ComputeHitZone(RaycastHit hit, List<Vector3> meshVertices, float radius)
         {
             Vector3 localHitPoint = hit.collider.transform.InverseTransformPoint(hit.point);
 
             hitIndices.Clear();
             falloffValues.Clear();
-
-            // NOTE: I suggest that: Capacity should not change between different runs
-            //hitIndices.Capacity = Mathf.Max(hitIndices.Capacity, meshVertices.Count / 4);
-            //sqrDistances.Capacity = Mathf.Max(hitIndices.Capacity, meshVertices.Count / 4);
 
             float sqrRadius = radius * radius;
             for (int i = 0; i < meshVertices.Count; i++)
@@ -217,154 +221,112 @@ namespace SculptTool.Editor.Brushes
                 {
                     hitIndices.Add(i);
                     float t = Mathf.Clamp01(sqrDistance / sqrRadius);
-                    float falloff = FalloffLogic(t);
-                    falloffValues.Add(falloff);
+                    falloffValues.Add(FalloffLogic(t));
                 }
             }
         }
 
         /// <summary>
-        /// Possible to change behaviour of brush falloff
+        /// Calculates a falloff weight based on normalized distance from brush center.
+        /// Can be overridden to change the falloff curve (e.g. linear, smoothstep, etc.).
         /// </summary>
-        /// <param name="normalizedDistance"> Interaval 0 - 1 ...</param>
-        /// <returns>fallov falue for individual vertex</returns>
         protected virtual float FalloffLogic(float normalizedDistance)
         {
             return normalizedDistance;
         }
 
-        protected virtual void DrawHandles()
-        { 
-            if (!hasValidHit) return;
-
-            var meshVertices = this.meshManager.GetVerticesBuffer();
-
-            // Rotation to align with axis
-            // Quaternion rotation = Quaternion.LookRotation(worldAxis);
-
-            for (int i = 0; i < hitIndices.Count; i++)
-            {
-                // Hit vertices and weight
-                float size = Mathf.Lerp(0.1f, 0.2f, Mathf.Abs(magnitudeValues[i]));
-                Vector3 worldVertex = lastHit.transform.TransformPoint(meshVertices[hitIndices[i]]);
-                // if intensity is negative change green to red
-                Color color = (brushDirection == BrushDirection.Push || magnitudeValues[i] < 0f) ? Color.red : Color.green;
-                // Color color = Color.green;
-                // if (intensity < 0) color = Color.red;
-
-                Handles.color = Color.Lerp(Color.black, color, falloffValues[i]); //Color.cyan;
-                Handles.SphereHandleCap(0, worldVertex, Quaternion.identity, size, EventType.Repaint);
-
-                // Brush radius circle
-                Handles.color = new Color(1f, 1f, 0f, 0.3f);
-                Handles.DrawWireDisc(lastHit.point, lastHit.normal, radius);
-            } 
-        }
-
-        // protected virtual Vector3 DisplacementLogic(int index)
-        // { 
-        //     float magnitude = weightValues[index] * intensity;
-        //     Vector3 direction = lastHit.transform.up; //.normalized;
-        //     Vector3 displacementVector = direction * magnitude;
-        //     return displacementVector;
-        // }
-
-        protected virtual Vector3 DisplacementDirection(int index)
+        /// <summary>
+        /// Returns the direction of displacement for a given vertex.
+        /// Default is Vector3.up.
+        /// </summary>
+        protected virtual Vector3 GetDisplacementDirection(int hitZoneIndex)
         {
-            return Vector3.up; //lastHit.transform.up; //.normalized;
+            return Vector3.up;
         }
 
         /// <summary>
-        /// Ideal - normalized value
+        /// Calculates the displacement magnitude for a vertex in the affected zone.
+        /// This uses the <paramref name="hitZoneIndex"/> to access precomputed data
+        /// (like falloff, delta, etc.) for that vertex.
         /// </summary>
-        /// <param name="index"></param>
-        /// <returns></returns>
-        protected virtual float DisplacementMagnitude(int index)
+        /// <param name="hitZoneIndex">
+        /// Index into hit zone arrays (e.g., hitIndices, falloffValues, etc.), 
+        /// not a direct vertex buffer index.
+        /// </param>
+        protected virtual float CalculateMagnitude(int hitZoneIndex)
         {
-            return falloffValues[index];
+            return falloffValues[hitZoneIndex];
         }
 
-        protected void UpdateMesh()
+        /// <summary>
+        /// Applies displacement to affected vertices based on brush logic and user input.
+        /// </summary>
+        private void ApplyMeshChanges()
         {
             if (meshManager == null || !hasValidHit) return;
+            if (!isMouseLeftClick && !isMouseLeftDrag) return;
 
-            if (isMouseLeftDrag || isMouseLeftClick)
+            for (int i = 0; i < hitIndices.Count; i++)
             {
-                //verticesBuffer = meshManager.GetVerticesBuffer();
+                Vector3 displacement = GetDisplacementDirection(i) * magnitudeValues[i] * intensity;
+                verticesBuffer[hitIndices[i]] += displacement * ((brushDirection == BrushDirection.Push) ? -1f : 1f);
+            }
 
-                for (int i = 0; i < hitIndices.Count; i++)
-                {
-                    Vector3 displacement = DisplacementDirection(i) * magnitudeValues[i] * intensity;
-                    verticesBuffer[hitIndices[i]] += displacement * ((brushDirection == BrushDirection.Push) ? -1f : 1f);
-                }
+            meshManager.ApplyVerticesBuffer();
 
-                meshManager.ApplyVerticesBuffer();
-                //  reset InputFlags test - avoid redundanci - or check inside..
-                //  or work with wayit - ms... to do new while dragging...
-                //  Resetovať iba klik – dragging pokračuje
-                // if (isMouseLeftClick && !isMouseLeftDrag)
-                isMouseLeftClick = false;
-                isMouseLeftDrag = false;
-            }   
+            isMouseLeftClick = false;
+            isMouseLeftDrag = false;
         }
 
+        /// <summary>
+        /// Draws visual indicators for the brush, such as spheres and radius disc.
+        /// </summary>
+        protected virtual void DrawBrushHandles()
+        {
+            if (!hasValidHit) return;
+
+            var meshVertices = meshManager.GetVerticesBuffer();
+
+            for (int i = 0; i < hitIndices.Count; i++)
+            {
+                float size = Mathf.Lerp(0.1f, 0.2f, Mathf.Abs(magnitudeValues[i]));
+                Vector3 worldVertex = lastHit.transform.TransformPoint(meshVertices[hitIndices[i]]);
+                Color color = (brushDirection == BrushDirection.Push || magnitudeValues[i] < 0f) ? Color.red : Color.green;
+
+                Handles.color = Color.Lerp(Color.black, color, falloffValues[i]);
+                Handles.SphereHandleCap(0, worldVertex, Quaternion.identity, size, EventType.Repaint);
+            }
+
+            Handles.color = new Color(1f, 1f, 0f, 0.3f);
+            Handles.DrawWireDisc(lastHit.point, lastHit.normal, radius);
+        }
+
+        /// <summary>
+        /// Called when the left mouse button is pressed.
+        /// </summary>
         protected virtual void OnLeftMouseDown(Event e)
         {
             isMouseLeftClick = true;
             e.Use();
         }
 
+        /// <summary>
+        /// Called during left mouse drag (holding + moving).
+        /// </summary>
         protected virtual void OnLeftMouseDrag(Event e)
         {
             isMouseLeftDrag = true;
             e.Use();
         }
 
+        /// <summary>
+        /// Called when the left mouse button is released.
+        /// </summary>
         protected virtual void OnLeftMouseUp(Event e)
-        { 
+        {
             isMouseLeftClick = false;
             isMouseLeftDrag = false;
-            e.Use(); // označiť event ako spracovaný
+            e.Use();
         }
-
-        // protected virtual void ApplyDisplacement()
-        // {
-        //     if (affectedVertices == null || displacementVectors == null) return;
-        //     meshManager.ApplyDisplacement(affectedVertices, displacementVectors);
-        // }
-
-        // public virtual void DrawGizmos()
-        // {
-        //     if (lastHit.HasValue)
-        //     {
-        //         DrawBrushGizmo(lastHit.Value.point);
-        //         HighlightAffectedVertices();
-        //     }
-        // }
-
-        // protected virtual void DrawBrushGizmo(Vector3 position)
-        // {
-        //     Handles.color = Color.yellow;
-        //     Handles.DrawWireDisc(position, Vector3.up, GetRadius());
-        // }
-
-        // protected virtual void HighlightAffectedVertices()
-        // {
-        //     if (affectedVertices == null) return;
-        //     Handles.color = Color.green;
-        //     foreach (var v in affectedVertices)
-        //     {
-        //         Handles.DotHandleCap(0, v, Quaternion.identity, 0.02f, EventType.Repaint);
-        //     }
-        // }
-
-        // protected abstract float GetRadius(); // každá brush môže mať vlastný radius
-        // protected abstract Vector3[] ComputeDisplacement(Vector3[] vertices, Vector3 center);
-
-        // private bool TryGetMeshHit(Event e, MeshManager mm, out RaycastHit hit)
-        // {
-        //     Ray mouseRay = HandleUtility.GUIPointToWorldRay(e.mousePosition);
-        //     return mm.Collider.Raycast(mouseRay, out hit, Mathf.Infinity);
-        // }
     }
 }
