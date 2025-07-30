@@ -53,8 +53,6 @@ Brushes access and modify:
 * `falloffValues`: Precomputed falloff multipliers.
 * (Optionally) other cached data like `deltaValues`.
 
----
-
 ## Available Brushes
 
 ### 1. **Axial Brush**
@@ -71,8 +69,6 @@ public class AxialBrush : BrushBase
 * `Falloff`: Attenuation curve from center outward.
 
 **Use Case:** Pull/push vertices in one direction, e.g. extrude upward or sideways.
-
----
 
 ### 2. **Flatten Brush**
 
@@ -95,8 +91,6 @@ public class FlattenBrush : BrushBase
 
 **Use Case:** Creating plateaus, terraces, or leveling uneven surfaces.
 
----
-
 ### 3. **Stamp Brush (Perlin Noise)**
 
 Applies Perlin noise-based height offsets to vertices, creating randomized natural deformation.
@@ -117,15 +111,11 @@ public class StampBrush : BrushBase
 
 **Use Case:** Adding terrain roughness, noise-based details, or stylized distortion.
 
----
-
 ## Integration Notes
 
 * All brushes are designed for editor-time sculpting.
 * They require a system that supplies `verticesBuffer` and `hitIndices` each frame.
 * Use `OnLayoutUpdate()` to precalculate cached values like average height or deltas.
-
----
 
 <!-- ## Directory Structure
 
@@ -137,15 +127,11 @@ Brushes/
 └── BrushBase.cs
 ``` -->
 
----
-
 ## 🔧 Dependencies
 
 * UnityEditor
 * UnityEngine
 * `SculptTool.Editor.Utils` – internal utility scripts (e.g. vertex filtering, common buffers)
-
----
 
 ## Authoring New Brushes
 
@@ -170,12 +156,8 @@ public class MyCustomBrush : BrushBase
 }
 ```
 
----
-
 ## 📝 License
 
 MIT / Custom — see root `LICENSE` file.
 
 ```
-
----
