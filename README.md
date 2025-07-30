@@ -11,8 +11,6 @@ Following best practices, scene events are split by type:
 
 A potential improvement in the future would be the introduction of a `BrushContext` class, which could improve readability and testability of the tool’s architecture. To maximize efficiency, this context should avoid being re-instantiated on every Scene Event.
 
----
-
 # Tool GUI
 
 Due to limited time for GUI design, a pragmatic approach was taken. A custom **Menu Item** was created that opens a standalone window using standard `EditorGUILayout` elements. The tool can be launched via the top menu:  
@@ -27,8 +25,6 @@ The user receives visual feedback about the tool’s impact through a set of `Ha
 In the future, the GUI could be improved with a more modern layout and extended brush settings. Currently, brushes operate in the **local coordinate space** of the mesh object. A future enhancement could allow switching to **world coordinates**.
 
 At the moment, displacement direction indicators are not rendered. This is because most sculpting occurs along the same axis. However, such visualization could be useful—especially if an **Inflate Brush** is developed that moves vertices along their normals.
-
----
 
 # Brushes and Modularity
 
