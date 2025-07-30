@@ -80,9 +80,20 @@ namespace SculptTool.Editor.Brushes
         /// </summary>
         public virtual void GetGUI()
         {
-            radius = EditorGUILayout.Slider("Radius", radius, RadiusMin, RadiusMax);
+            radius = EditorGUILayout.Slider(
+                new GUIContent("Radius", "Hold Ctrl and scroll to change the radius."),
+                radius,
+                RadiusMin,
+                RadiusMax
+            );
+
             intensity = EditorGUILayout.Slider("Intensity", intensity, 0.01f, 1f);
-            brushDirection = (BrushDirection)EditorGUILayout.EnumPopup("Direction", brushDirection);
+
+            brushDirection = (BrushDirection)EditorGUILayout.EnumPopup(
+                new GUIContent("Direction", "Hold Ctrl to toggle between Push and Pull."),
+                brushDirection
+            );
+
         }
 
         /// <summary>

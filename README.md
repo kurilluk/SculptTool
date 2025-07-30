@@ -14,7 +14,7 @@ A potential improvement in the future would be the introduction of a `BrushConte
 # Tool GUI
 
 Due to limited time for GUI design, a pragmatic approach was taken. A custom **Menu Item** was created that opens a standalone window using standard `EditorGUILayout` elements. The tool can be launched via the top menu:  
-**Tools > Sculpt Mode**
+**Tools > SculptTool**
 
 To enhance the user experience, several keyboard shortcuts were added:
 - **Hold Ctrl** to toggle between Push/Pull mode  

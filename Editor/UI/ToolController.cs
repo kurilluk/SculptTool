@@ -31,10 +31,10 @@ namespace SculptTool.Editor.UI
         /// <summary>
         /// Opens the Sculpt Mode editor window from the Unity menu.
         /// </summary>
-        [MenuItem("Tools/Sculpt Mode")]
+        [MenuItem("Tools/SculptTool")]
         public static void ShowWindow()
         {
-            window = GetWindow<ToolController>("Sculpt Mode");
+            window = GetWindow<ToolController>("SculptTool");
             SceneView.duringSceneGui -= window.OnSceneGUI;
             SceneView.duringSceneGui += window.OnSceneGUI;
             window.autoRepaintOnSceneChange = true;
