@@ -159,5 +159,3 @@ public class MyCustomBrush : BrushBase
 ## 📝 License
 
 MIT / Custom — see root `LICENSE` file.
-
-```
