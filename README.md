@@ -1,7 +1,5 @@
 # SculptTool
 
-# Mesh Manager in Unity
-
 At the beginning of the development process, it was necessary to create a `MeshManager` to avoid modifying the original mesh asset directly. This manager handles a duplicate of the `sharedMesh` and applies all edits to that duplicate.
 
 For the purposes of the Brush Tool—which frequently modifies mesh vertex data—a `List<Vector3>` was chosen over traditional arrays. This list is allocated once and reused, which helps prevent memory leaks that could otherwise occur with dynamic array reallocation. The system architecture was built around this decision: all operations work directly on a reference to the vertex list. In the frequently called `OnSceneGUI()` function, object instantiation is minimized—even at the expense of code readability—to reduce memory pressure.
